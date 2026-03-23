@@ -42,3 +42,29 @@
 git clone [https://github.com/YourUsername/YourRepository.git](https://github.com/YourUsername/YourRepository.git)
 cd YourRepository
 pip install torch torchvision pandas Pillow flask werkzeug exifread echarts
+```
+
+### 2. 启动 Web 服务
+```bash
+python app.py
+#服务启动后，在浏览器中访问 http://127.0.0.1:5000 即可体验完整的交互式评测实验室。
+```
+---
+###📁 核心目录结构
+```Plaintext
+.
+├── app.py                 # Flask 后端路由与并发控制核心
+├── inference.py           # 独立的多模态端到端推理管道（底层依赖 exifread 二进制解析）
+├── model.py               # SPAQRegressor 网络架构定义
+├── dataset.py             # 数据预处理与 EXIF 特征清洗模块
+├── train.py / test.py     # 模型训练回路与测试评估脚本
+├── checkpoints/
+│   └── best_model.pth     # 训练收敛的最佳模型权重
+└── templates/
+    └── index.html         # 基于 Tailwind + 原生 JS 的响应式交互前端
+```
+---
+### 👨‍💻 作者信息
+杨皓臣 (Haochen Yang) 
+清华大学 (Tsinghua University) - 未央书院 (Weiyang College) 
+研究兴趣：人机交互 (HCI)、用户体验设计 (UX)、深度学习在视觉评估中的应用
