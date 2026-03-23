@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 摄影画质评估引擎 | SPAQ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        body { background-color: #F9FAFB; color: #111827; }
+        .card-shadow { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025); }
+        .upload-area { transition: all 0.2s ease-in-out; }
+        .upload-area.dragover { border-color: #3B82F6; background-color: #EFF6FF; transform: scale(1.01); }
+        .fade-enter { opacity: 0; transform: translateY(10px); }
+        .fade-enter-active { opacity: 1; transform: translateY(0); transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* 定制滑动条样式 */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 20px; width: 20px;
+            border-radius: 50%; background: #3B82F6; cursor: pointer;
+            margin-top: -8px; box-shadow: 0 0 5px rgba(0,0,0,0.2);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 6px; cursor: pointer;
+            background: #E5E7EB; border-radius: 3px;
+        }
+
+        /* Winner 高亮特效 */
+        .winner-card { border: 2px solid #10B981 !important; background-color: #ECFDF5 !important; position: relative; }
+        .winner-badge { position: absolute; top: -12px; right: -12px; background: #10B981; color: white; border-radius: 999px; padding: 4px 12px; font-weight: bold; font-size: 12px; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3); }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased flex flex-col items-center p-4 md:p-8">
+
+    <header class="w-full max-w-6xl mb-6">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="p-2 bg-blue-50 text-blue-600 rounded-lg"><i class="ph ph-aperture text-3xl"></i></div>
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight">AI 摄影美学实验室</h1>
+                <p class="text-sm text-gray-500 font-medium">多维特征评估与 A/B 视觉对比</p>
+            </div>
+        </div>
+
+        <div class="flex space-x-2 bg-gray-200/50 p-1 rounded-xl w-fit">
+            <button id="tab-single" class="px-6 py-2.5 rounded-lg text-sm font-bold bg-white shadow-sm text-blue-600 transition-all flex items-center gap-2">
+                <i class="ph ph-microscope text-lg"></i> 深度单图评测
+            </button>
+            <button id="tab-ab" class="px-6 py-2.5 rounded-lg text-sm font-bold text-gray-500 hover:text-gray-700 transition-all flex items-center gap-2">
+                <i class="ph ph-images text-lg"></i> A/B 对比评测室
+            </button>
+        </div>
+    </header>
+
+    <main id="view-single" class="w-full max-w-6xl grid grid-cols-1 md:grid-cols-12 gap-6 transition-all duration-300">
+        <section class="md:col-span-5 bg-white rounded-2xl p-6 card-shadow flex flex-col min-h-[600px]">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2"><i class="ph ph-image text-blue-500"></i> 图像载入</h2>
+                <button id="btn-reset-single" class="text-sm text-gray-500 hover:text-blue-600 font-medium transition-colors hidden"><i class="ph ph-arrow-counter-clockwise"></i> 重置</button>
+            </div>
+            
+            <div id="drop-zone-single" class="upload-area flex-1 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer relative overflow-hidden group">
+                <div id="ui-initial-single" class="flex flex-col items-center text-center p-6 z-10 w-full">
+                    <div class="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4"><i class="ph ph-upload-simple text-3xl text-blue-500"></i></div>
+                    <p class="text-base font-bold text-gray-700">点击或拖拽上传</p>
+                    <p class="text-xs text-gray-500 mt-1">最高支持 32MB 的超清摄影作品</p>
+                </div>
+                <img id="img-preview-single" class="absolute inset-0 w-full h-full object-contain bg-gray-900 hidden z-0" alt="Preview">
+                <input type="file" id="file-single" class="hidden" accept="image/jpeg, image/png, image/jpg">
+            </div>
+
+            <div id="human-box-single" class="mt-5 hidden bg-gray-50 rounded-xl p-4 border border-gray-100">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-bold text-gray-700">凭直觉给个分？</span>
+                    <span id="human-score-label" class="text-xl font-black text-blue-600">75</span>
+                </div>
+                <input type="range" id="human-slider" min="0" max="100" value="75" class="w-full mb-3">
+                <button id="btn-analyze-single" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-md flex items-center justify-center gap-2">
+                    <i class="ph ph-sparkle text-lg"></i> 生成深度报告
+                </button>
+            </div>
+        </section>
+
+        <section class="md:col-span-7 bg-white rounded-2xl p-6 card-shadow flex flex-col min-h-[600px] relative overflow-hidden">
+            <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="ph ph-chart-polar text-blue-500"></i> 分析看板与优化建议</h2>
+
+            <div class="flex-1 relative">
+                <div id="ui-idle-single" class="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
+                    <i class="ph ph-crosshair text-5xl mb-4 text-gray-300"></i>
+                    <p class="text-sm font-medium">准备就绪，等待分析</p>
+                </div>
+
+                <div id="ui-loading-single" class="absolute inset-0 flex flex-col items-center justify-center hidden bg-white z-10">
+                    <i class="ph ph-spinner-gap text-5xl text-blue-500 animate-spin mb-4"></i>
+                    <p class="text-gray-800 font-bold mb-1">正在融合神经特征与物理参数...</p>
+                </div>
+
+                <div id="ui-result-single" class="absolute inset-0 flex flex-col hidden overflow-y-auto no-scrollbar fade-enter bg-white z-20">
+                    
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="bg-gray-50 rounded-xl p-4 flex flex-col items-center border border-gray-100">
+                            <p class="text-xs font-bold text-gray-500 mb-1">你的直觉分</p>
+                            <span id="display-human-score" class="text-4xl font-black text-gray-700">0</span>
+                        </div>
+                        <div class="bg-blue-50 rounded-xl p-4 flex flex-col items-center border border-blue-100 relative overflow-hidden">
+                            <p class="text-xs font-bold text-blue-600 mb-1">SPAQ 模型分</p>
+                            <span id="display-ai-score" class="text-4xl font-black text-blue-700">0.00</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-4 bg-gradient-to-r from-indigo-50 to-blue-50 p-4 rounded-xl border border-indigo-100">
+                        <h3 class="text-sm font-bold text-indigo-800 mb-2 flex items-center gap-2"><i class="ph ph-lightbulb text-lg"></i> What-If 参数优化建议</h3>
+                        <ul id="what-if-list" class="text-sm text-indigo-900 space-y-2 list-disc pl-4 font-medium leading-relaxed">
+                            </ul>
+                    </div>
+
+                    <div class="flex-1 min-h-[220px] border border-gray-100 rounded-xl p-2 relative">
+                        <p class="absolute top-2 left-3 text-xs font-bold text-gray-400 z-10">EXIF 雷达</p>
+                        <div id="radar-chart" class="w-full h-full"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <main id="view-ab" class="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-6 hidden transition-all duration-300">
+        
+        <section class="bg-white rounded-2xl p-6 card-shadow flex flex-col min-h-[500px]">
+            <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4"><i class="ph ph-image text-indigo-500"></i> 版本 A (对照组)</h2>
+            <div id="drop-zone-A" class="upload-area h-64 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center cursor-pointer relative overflow-hidden mb-4">
+                <p id="prompt-A" class="text-gray-500 font-bold z-10">载入图片 A</p>
+                <img id="img-A" class="absolute inset-0 w-full h-full object-cover hidden z-0">
+                <input type="file" id="file-A" class="hidden" accept="image/jpeg, image/png, image/jpg">
+            </div>
+            
+            <div id="result-box-A" class="flex-1 bg-gray-50 rounded-xl flex flex-col items-center justify-center p-4 border border-gray-100 opacity-50 transition-all">
+                <p class="text-sm font-bold text-gray-500 mb-2">版本 A 得分</p>
+                <span id="score-A" class="text-5xl font-black text-gray-400">--</span>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-2xl p-6 card-shadow flex flex-col min-h-[500px]">
+            <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4"><i class="ph ph-image text-emerald-500"></i> 版本 B (实验组)</h2>
+            <div id="drop-zone-B" class="upload-area h-64 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center cursor-pointer relative overflow-hidden mb-4">
+                <p id="prompt-B" class="text-gray-500 font-bold z-10">载入图片 B</p>
+                <img id="img-B" class="absolute inset-0 w-full h-full object-cover hidden z-0">
+                <input type="file" id="file-B" class="hidden" accept="image/jpeg, image/png, image/jpg">
+            </div>
+
+            <div id="result-box-B" class="flex-1 bg-gray-50 rounded-xl flex flex-col items-center justify-center p-4 border border-gray-100 opacity-50 transition-all">
+                <p class="text-sm font-bold text-gray-500 mb-2">版本 B 得分</p>
+                <span id="score-B" class="text-5xl font-black text-gray-400">--</span>
+            </div>
+        </section>
+
+        <div class="md:col-span-2 flex justify-center mt-2">
+            <button id="btn-compare" class="px-12 py-4 rounded-xl bg-gray-800 hover:bg-gray-900 text-white font-bold text-lg shadow-lg shadow-gray-400/50 transition-all flex items-center gap-2 disabled:opacity-50" disabled>
+                <i class="ph ph-sword text-xl"></i> 开始巅峰对决
+            </button>
+            <button id="btn-reset-ab" class="ml-4 px-6 py-4 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold transition-all hidden">
+                重新对比
+            </button>
+        </div>
+    </main>
+
+    <script>
+        const MAX_SIZE = 32 * 1024 * 1024; // 32MB
+
+        // 统一文件验证器
+        function validateFile(file) {
+            if (!file) return false;
+            if (!file.type.match('image/(jpeg|png|jpg)')) { alert('仅支持 JPG/PNG 格式'); return false; }
+            if (file.size > MAX_SIZE) { alert('图片大小不能超过 32MB'); return false; }
+            return true;
+        }
+
+        // ==================== 路由与 Tab 切换逻辑 ====================
+        const tabSingle = document.getElementById('tab-single');
+        const tabAb = document.getElementById('tab-ab');
+        const viewSingle = document.getElementById('view-single');
+        const viewAb = document.getElementById('view-ab');
+
+        function switchTab(mode) {
+            if (mode === 'single') {
+                tabSingle.className = "px-6 py-2.5 rounded-lg text-sm font-bold bg-white shadow-sm text-blue-600 transition-all flex items-center gap-2";
+                tabAb.className = "px-6 py-2.5 rounded-lg text-sm font-bold text-gray-500 hover:text-gray-700 transition-all flex items-center gap-2";
+                viewSingle.classList.remove('hidden'); viewAb.classList.add('hidden');
+            } else {
+                tabAb.className = "px-6 py-2.5 rounded-lg text-sm font-bold bg-white shadow-sm text-blue-600 transition-all flex items-center gap-2";
+                tabSingle.className = "px-6 py-2.5 rounded-lg text-sm font-bold text-gray-500 hover:text-gray-700 transition-all flex items-center gap-2";
+                viewAb.classList.remove('hidden'); viewSingle.classList.add('hidden');
+            }
+        }
+        tabSingle.addEventListener('click', () => switchTab('single'));
+        tabAb.addEventListener('click', () => switchTab('ab'));
+
+
+        // ==================== 【核心修复】通用的交互式拖拽装载器 ====================
+        /**
+         * 为指定的区域绑定点击与拖拽上传功能，并处理所有的边界情况
+         * @param {string} zoneId - 拖拽响应区域的 DOM ID
+         * @param {string} inputId - 隐藏的 file input 的 DOM ID
+         * @param {Function} onFileSelected - 成功接收文件后的回调函数
+         */
+        function setupInteractiveDropZone(zoneId, inputId, onFileSelected) {
+            const zone = document.getElementById(zoneId);
+            const input = document.getElementById(inputId);
+
+            // 1. 绑定点击触发
+            zone.addEventListener('click', () => { input.click(); });
+
+            // 2. 绑定传统的选择器触发
+            input.addEventListener('change', function() {
+                if (this.files.length && validateFile(this.files[0])) {
+                    onFileSelected(this.files[0]);
+                }
+                this.value = ''; // 极其关键：清空 value 保证下次选择同名文件依然能触发 change
+            });
+
+            // 3. 拦截拖拽默认行为（防止浏览器直接打开图片）
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                zone.addEventListener(eventName, e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+
+            // 4. 拖入时的视觉反馈 (激活 .dragover 的 CSS 样式)
+            ['dragenter', 'dragover'].forEach(eventName => {
+                zone.addEventListener(eventName, () => zone.classList.add('dragover'), false);
+            });
+
+            // 5. 拖出时的视觉反馈消除
+            ['dragleave', 'drop'].forEach(eventName => {
+                zone.addEventListener(eventName, () => zone.classList.remove('dragover'), false);
+            });
+
+            // 6. 核心：处理拖拽放下动作
+            zone.addEventListener('drop', e => {
+                const files = e.dataTransfer.files;
+                if (files.length && validateFile(files[0])) {
+                    onFileSelected(files[0]);
+                }
+            });
+        }
+
+
+        // ==================== 视图 1：单图与 What-If 引擎 ====================
+        let fileSingle = null, radarChart = null;
+        
+        document.getElementById('human-slider').addEventListener('input', e => document.getElementById('human-score-label').innerText = e.target.value);
+
+        // 应用通用装载器到单图评测区
+        setupInteractiveDropZone('drop-zone-single', 'file-single', (file) => {
+            fileSingle = file;
+            const reader = new FileReader();
+            reader.onload = e => {
+                document.getElementById('img-preview-single').src = e.target.result;
+                document.getElementById('img-preview-single').classList.remove('hidden');
+                document.getElementById('ui-initial-single').classList.add('hidden');
+                document.getElementById('human-box-single').classList.remove('hidden');
+                document.getElementById('btn-reset-single').classList.remove('hidden');
+            };
+            reader.readAsDataURL(fileSingle);
+        });
+
+        document.getElementById('btn-reset-single').addEventListener('click', () => {
+            fileSingle = null;
+            document.getElementById('img-preview-single').classList.add('hidden');
+            document.getElementById('ui-initial-single').classList.remove('hidden');
+            document.getElementById('human-box-single').classList.add('hidden');
+            document.getElementById('btn-reset-single').classList.add('hidden');
+            document.getElementById('ui-idle-single').classList.remove('hidden');
+            document.getElementById('ui-result-single').classList.add('hidden');
+            document.getElementById('ui-result-single').classList.remove('fade-enter-active');
+        });
+
+        document.getElementById('btn-analyze-single').addEventListener('click', () => {
+            const hScore = document.getElementById('human-slider').value;
+            document.getElementById('ui-idle-single').classList.add('hidden');
+            document.getElementById('ui-result-single').classList.add('hidden');
+            document.getElementById('ui-loading-single').classList.remove('hidden');
+            
+            const formData = new FormData(); formData.append('image', fileSingle);
+            fetch('/api/predict', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('ui-loading-single').classList.add('hidden');
+                document.getElementById('ui-result-single').classList.remove('hidden');
+                requestAnimationFrame(() => document.getElementById('ui-result-single').classList.add('fade-enter-active'));
+                
+                document.getElementById('display-human-score').innerText = hScore;
+                animateValue(document.getElementById('display-ai-score'), 0, data.score, 1000);
+                
+                generateWhatIf(data.score, data.exif);
+                renderRadar(data.exif);
+            }).catch(e => { alert("评估失败: " + e.message); document.getElementById('btn-reset-single').click(); });
+        });
+
+        // What-If 引擎
+        function generateWhatIf(score, exif) {
+            const list = document.getElementById('what-if-list');
+            list.innerHTML = ""; 
+            let rules = [];
+
+            if (exif.ISO > 1600) {
+                rules.push(`当前 ISO (${exif.ISO}) 过高。<b>假如</b>使用三脚架稳定机身并将 ISO 降至 800 以下，可极大减少暗部噪点，预计画质评分可提升 5~8 分。`);
+            }
+            if (exif.ExposureTime > 0) {
+                if (exif.ExposureTime < 0.02) { 
+                    rules.push(`当前快门较慢 (${parseFloat(exif.ExposureTime).toFixed(3)}s)。<b>假如</b>增大光圈或略提 ISO 换取更高快门速度，能有效避免手抖导致的边缘模糊。`);
+                } else if (exif.ExposureTime > 0.00025 && exif.ISO > 400 && score < 75) {
+                    rules.push(`处于较快快门下但画质不佳。<b>假如</b>这是静止场景，可尝试降低快门速度以换取更低的 ISO，从而获得更纯净的画质。`);
+                }
+            }
+            if (exif.FNumber >= 11 && score < 80) {
+                rules.push(`当前光圈较小 (F/${exif.FNumber})。<b>假如</b>是在拍摄人像或静物，开大光圈 (如 F/2.8) 增加背景虚化，能显著提升主体的视觉聚焦度。`);
+            }
+            if (rules.length === 0) {
+                if (score >= 85) rules.push(`当前参数组合极其出彩，光影与景深控制堪称典范，无需任何妥协！`);
+                else rules.push(`当前曝光参数相对均衡。<b>假如</b>能在后期微调对比度与色彩饱和度，或尝试不同的构图切入点，作品的视觉冲击力将进一步提升。`);
+            }
+
+            rules.forEach(r => {
+                let li = document.createElement('li');
+                li.innerHTML = r;
+                list.appendChild(li);
+            });
+        }
+
+        function renderRadar(exif) {
+            if(!radarChart) { radarChart = echarts.init(document.getElementById('radar-chart')); window.addEventListener('resize', () => radarChart.resize()); }
+            const maxISO = Math.max(6400, exif.ISO || 100);
+            const maxFocal = Math.max(200, exif.FocalLength || 50);
+            const maxExp = Math.max(1, exif.ExposureTime || 0);
+            radarChart.setOption({
+                color: ['#3B82F6'], tooltip: { trigger: 'item' },
+                radar: {
+                    indicator: [{ name: 'ISO', max: maxISO }, { name: '曝光(s)', max: maxExp }, { name: '光圈(F)', max: 22 }, { name: '焦距(mm)', max: maxFocal }, { name: '亮度(EV)', max: 12 }],
+                    shape: 'circle', splitNumber: 4, center: ['50%', '50%'], radius: '65%',
+                    axisName: { color: '#6B7280', fontSize: 10 },
+                    splitLine: { lineStyle: { color: ['#F3F4F6', '#E5E7EB'] } }, splitArea: { show: false }, axisLine: { lineStyle: { color: '#E5E7EB' } }
+                },
+                series: [{ type: 'radar', symbolSize: 4, areaStyle: { color: 'rgba(59, 130, 246, 0.2)' }, data: [{ value: [exif.ISO||0, exif.ExposureTime||0, exif.FNumber||0, exif.FocalLength||0, exif.Brightness||0] }] }]
+            });
+        }
+
+
+        // ==================== 视图 2：A/B 对比评测逻辑 ====================
+        let fileA = null, fileB = null;
+
+        // 应用通用装载器到 A 区和 B 区，并添加预览界面的 UI 切换逻辑
+        setupInteractiveDropZone('drop-zone-A', 'file-A', f => { 
+            fileA = f; 
+            const reader = new FileReader();
+            reader.onload = e => { 
+                document.getElementById('img-A').src = e.target.result; 
+                document.getElementById('img-A').classList.remove('hidden'); 
+                document.getElementById('prompt-A').classList.add('hidden'); 
+                checkAbReady(); 
+            };
+            reader.readAsDataURL(fileA);
+        });
+
+        setupInteractiveDropZone('drop-zone-B', 'file-B', f => { 
+            fileB = f; 
+            const reader = new FileReader();
+            reader.onload = e => { 
+                document.getElementById('img-B').src = e.target.result; 
+                document.getElementById('img-B').classList.remove('hidden'); 
+                document.getElementById('prompt-B').classList.add('hidden'); 
+                checkAbReady(); 
+            };
+            reader.readAsDataURL(fileB);
+        });
+
+        function checkAbReady() {
+            const btn = document.getElementById('btn-compare');
+            if(fileA && fileB) { btn.disabled = false; btn.classList.remove('bg-gray-800'); btn.classList.add('bg-blue-600', 'hover:bg-blue-700'); }
+        }
+
+        document.getElementById('btn-compare').addEventListener('click', async () => {
+            const btn = document.getElementById('btn-compare');
+            btn.disabled = true; btn.innerHTML = '<i class="ph ph-spinner animate-spin text-xl"></i> 对决中...';
+            
+            try {
+                const [resA, resB] = await Promise.all([
+                    fetch('/api/predict', { method: 'POST', body: (() => { const fd = new FormData(); fd.append('image', fileA); return fd; })() }).then(r=>r.json()),
+                    fetch('/api/predict', { method: 'POST', body: (() => { const fd = new FormData(); fd.append('image', fileB); return fd; })() }).then(r=>r.json())
+                ]);
+
+                btn.classList.add('hidden');
+                document.getElementById('btn-reset-ab').classList.remove('hidden');
+
+                const boxA = document.getElementById('result-box-A'), boxB = document.getElementById('result-box-B');
+                const scoreA = document.getElementById('score-A'), scoreB = document.getElementById('score-B');
+                
+                boxA.classList.remove('opacity-50'); boxB.classList.remove('opacity-50');
+                animateValue(scoreA, 0, resA.score, 1000);
+                animateValue(scoreB, 0, resB.score, 1000);
+
+                setTimeout(() => {
+                    scoreA.classList.remove('text-gray-400'); scoreB.classList.remove('text-gray-400');
+                    if (resA.score > resB.score) {
+                        boxA.classList.add('winner-card'); scoreA.classList.add('text-green-600'); scoreB.classList.add('text-gray-500');
+                        boxA.innerHTML += '<div class="winner-badge">Winner 🏆</div>';
+                    } else if (resB.score > resA.score) {
+                        boxB.classList.add('winner-card'); scoreB.classList.add('text-green-600'); scoreA.classList.add('text-gray-500');
+                        boxB.innerHTML += '<div class="winner-badge">Winner 🏆</div>';
+                    } else {
+                        scoreA.classList.add('text-blue-600'); scoreB.classList.add('text-blue-600');
+                    }
+                }, 1100);
+
+            } catch (e) {
+                alert("对比评测发生异常: " + e.message);
+                btn.disabled = false; btn.innerHTML = '<i class="ph ph-sword text-xl"></i> 开始巅峰对决';
+            }
+        });
+
+        document.getElementById('btn-reset-ab').addEventListener('click', () => {
+            fileA = null; fileB = null;
+            ['A', 'B'].forEach(id => {
+                document.getElementById(`img-${id}`).classList.add('hidden');
+                document.getElementById(`prompt-${id}`).classList.remove('hidden');
+                const box = document.getElementById(`result-box-${id}`);
+                box.classList.add('opacity-50'); box.classList.remove('winner-card');
+                const badge = box.querySelector('.winner-badge'); if(badge) badge.remove();
+                const score = document.getElementById(`score-${id}`);
+                score.innerText = '--'; score.className = "text-5xl font-black text-gray-400";
+            });
+            document.getElementById('btn-reset-ab').classList.add('hidden');
+            const btn = document.getElementById('btn-compare');
+            btn.classList.remove('hidden', 'bg-blue-600', 'hover:bg-blue-700'); btn.classList.add('bg-gray-800');
+            btn.disabled = true; btn.innerHTML = '<i class="ph ph-sword text-xl"></i> 开始巅峰对决';
+        });
+
+        function animateValue(obj, start, end, duration) {
+            let startTimestamp = null;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+                obj.innerHTML = (easeOut * (end - start) + start).toFixed(2);
+                if (progress < 1) window.requestAnimationFrame(step);
+            };
+            window.requestAnimationFrame(step);
+        }
+    </script>
+</body>
+</html>

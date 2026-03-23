@@ -1,0 +1,16 @@
+
+*.pth
+checkpoints/
+spaq_web/checkpoints/
+
+
+images/
+
+
+__pycache__/
+*.pyc
+.vscode/
+.conda/
+
+*.docx
+*.pdf
