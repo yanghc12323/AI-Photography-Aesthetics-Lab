@@ -49,8 +49,9 @@ pip install torch torchvision pandas Pillow flask werkzeug exifread echarts
 python app.py
 #服务启动后，在浏览器中访问 http://127.0.0.1:5000 即可体验完整的交互式评测实验室。
 ```
+
 ---
-###📁 核心目录结构
+## 📁 核心目录结构
 ```Plaintext
 .
 ├── app.py                 # Flask 后端路由与并发控制核心
